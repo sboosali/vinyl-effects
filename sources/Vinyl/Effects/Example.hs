@@ -7,6 +7,8 @@
 module Vinyl.Effects.Example where
 import Vinyl.Effects
 
+import Control.Arrow ((>>>))
+
 --------------------------------------------------------------------------------
 
 {- | an effect to visit the url that's currently in the clipboard.
@@ -91,6 +93,26 @@ setClipboard :: (MonadClipboard m effects) => String -> m ()
 setClipboard s = liftL $ SetClipboard s ()
   -- SetClipboard s () :: ClipboardF ()
 
+reverseClipboard :: (MonadClipboard m effects) => m ()
+reverseClipboard = getClipboard >>= (reverse >>> setClipboard)
+
+-- | calls 'iterLM'.
+runMonadClipboard :: Language '[ClipboardF] a -> IO a
+runMonadClipboard = iterLM go
+ where
+ go :: LanguageF '[ClipboardF] (IO a) -> IO a
+ go = fromUnitLanguageF >>> \case
+   GetClipboard f -> sh_GetClipboard >>= f
+   SetClipboard s k -> sh_SetClipboard s >> k
+
+-- | shells out (@$ pbpaste@), works only on OSX.
+sh_GetClipboard :: IO String
+sh_GetClipboard = return "the clipboard contents"
+
+-- | shells out (@$ ... | pbcopy@), works only on OSX.
+sh_SetClipboard :: String -> IO ()
+sh_SetClipboard s = print s
+
 --------------------------------------------------------------------------------
 
 type MonadOpenUrl m effects =
@@ -107,11 +129,31 @@ openUrl :: (MonadOpenUrl m effects) => String -> m ()
 openUrl s = liftL $ OpenUrl s ()
    -- OpenUrl s :: OpenUrlF ()
 
+-- | calls 'iterLM'.
+runMonadOpenUrl :: Language '[OpenUrlF] a -> IO a
+runMonadOpenUrl = iterLM go
+ where
+ go :: LanguageF '[OpenUrlF] (IO a) -> IO a
+ go = fromUnitLanguageF >>> \case
+   OpenUrl s k -> sh_OpenUrl s >> k
+
+-- | shells out (@$ open ...@), works only on OSX.
+sh_OpenUrl :: String -> IO ()
+sh_OpenUrl s = print s
+
 --------------------------------------------------------------------------------
 
--- |
+{-|
+
+@
+stack build && stack exec example-vinyl-effects
+@
+
+-}
 main :: IO ()
 main = do
- print "MonadWorkflow"
+ putStrLn ""
+ runMonadOpenUrl $ openUrl "google.com"
+ runMonadClipboard $ reverseClipboard
 
 --------------------------------------------------------------------------------

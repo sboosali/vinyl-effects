@@ -29,6 +29,7 @@ module Vinyl.Effects
   , module Vinyl.Effects.Types
   , module Data.Vinyl
   , module Vinyl.CoRec
+  , module Control.Monad.Free
   ) where
 
 import Vinyl.Effects.Language
@@ -37,3 +38,4 @@ import Vinyl.Effects.Types
 
 import Data.Vinyl -- as Vinyl
 import Vinyl.CoRec -- as Vinyl
+import Control.Monad.Free -- as Free

@@ -16,6 +16,7 @@ import Data.Vinyl
 import Control.Monad.Trans.Free
 
 import Control.Monad
+import Data.Functor.Identity
 
 --------------------------------------------------------------------------------
 
@@ -174,5 +175,32 @@ instance MonadFree (LanguageF effects) (Language effects) where
  -- wrap :: f (m a) -> m a
  -- wrap :: (LanguageF effects) ((Language effects) a) -> (Language effects) a
  wrap = Free >>> Language
+
+--------------------------------------------------------------------------------
+
+{-|
+
+-}
+fromUnitLanguageF :: forall f a. LanguageF '[f] a -> f a
+fromUnitLanguageF = getLanguageF >>> handle unitHandlers >>> getApply
+
+--------------------------------------------------------------------------------
+
+-- | cast a (@newtype@'d) @Language@ to @Free@. TODO is cheap (can use 'coerce')?
+fromLanguage :: Language effects a -> Free (LanguageF effects) a
+fromLanguage (Language m) = (FreeT . Identity) $ fmap (fromLanguage) m
+
+-- | wraps 'iter'.
+iterL
+ :: (LanguageF effects a -> a)
+ -> (Language  effects a -> a)
+iterL u = fromLanguage >>> iter u
+
+-- | wraps 'iterM'.
+iterLM
+ :: (Monad m)
+ => (LanguageF effects (m a) -> m a)
+ -> (Language  effects a     -> m a)
+iterLM u = fromLanguage >>> iterM u
 
 --------------------------------------------------------------------------------

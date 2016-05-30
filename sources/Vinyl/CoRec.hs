@@ -46,14 +46,18 @@ newtype Outputs b a = O { runOutputs :: a -> b }
 -}
 type (<--) = Outputs
 
+{-| a product of handlers.
+
+-}
+type Handlers f b as = Rec (Handler f b) as
+
 {-| a flipped @CoKleisli@.
 
 -}
 newtype Handler f b a = H { runHandler :: f a -> b }
 
 
-
--- ================================================================ --
+--------------------------------------------------------------------------------
 
 -- | helper to build a 'OneOf'
 column :: (t ∈ ts) => t -> OneOf ts
@@ -67,6 +71,13 @@ outputs2handler :: Outputs b a -> Handler Identity b a
 outputs2handler (O f) = H (f.getIdentity)
 {-# INLINEABLE outputs2handler #-}
 
+-- | inverse with 'toUnitCoRec'
+fromUnitCoRec :: CoRec f '[a] -> f a
+fromUnitCoRec = handle unitHandlers
+
+-- | inverse with 'fromUnitCoRec'
+toUnitCoRec :: f a -> CoRec f '[a]
+toUnitCoRec = Col
 
 {-| you consume a coproduct with a product of consumers i.e. you must handle every case.
 
@@ -83,6 +94,11 @@ handle handlers (Col variant) = h variant
  -- to access the correct handler.
 {-# INLINEABLE handle #-}
 
+{-|
+
+-}
+unitHandlers :: Rec (Handler f (f a)) '[a]
+unitHandlers = H id :& RNil
 
 {-| perform "pattern matching" upon a CoRec.
 
@@ -135,7 +151,7 @@ match hs c = handle (rmap outputs2handler hs) c
 
 
 
--- ================================================================ --
+--------------------------------------------------------------------------------
 
 {- examples
 
