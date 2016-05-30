@@ -1,4 +1,4 @@
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
-import qualified Vinyl.Effects.Main
+import qualified Vinyl.Effects.Example
 
-main = Vinyl.Effects.Main.main
+main = Vinyl.Effects.Example.main
