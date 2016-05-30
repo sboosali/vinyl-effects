@@ -34,6 +34,10 @@ library
 
  exposed-modules:
   Vinyl.Effects
+  Vinyl.Effects.Language
+  Vinyl.Effects.Interpreter
+  Vinyl.Effects.Types
+
   Vinyl.Effects.Example
   Vinyl.Effects.Extra
 

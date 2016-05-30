@@ -7,8 +7,6 @@
 module Vinyl.Effects.Example where
 import Vinyl.Effects
 
-import Data.Vinyl
-
 --------------------------------------------------------------------------------
 
 {- | an effect to visit the url that's currently in the clipboard.
