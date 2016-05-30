@@ -1,4 +1,6 @@
-{-| extensible effects. uses:
+{-| extensible effects. good inference.
+
+uses:
 
 * the @free@ package,
 for 'Free' (which transforms a functor into a monad)
@@ -29,7 +31,7 @@ module Vinyl.Effects
   , module Vinyl.Effects.Types
   , module Data.Vinyl
   , module Vinyl.CoRec
-  , module Control.Monad.Free
+  -- , module Control.Monad.Free -- user shouldn't need it
   ) where
 
 import Vinyl.Effects.Language
@@ -38,4 +40,4 @@ import Vinyl.Effects.Types
 
 import Data.Vinyl -- as Vinyl
 import Vinyl.CoRec -- as Vinyl
-import Control.Monad.Free -- as Free
+-- import Control.Monad.Free -- as Free

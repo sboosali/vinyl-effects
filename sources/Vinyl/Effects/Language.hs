@@ -57,6 +57,7 @@ instance Monad (Language effects) where
 --------------------------------------------------------------------------------
 
 {-| a (type-level) @sum@ of "language features".
+Generally, a (1) lifted, (2) n-ary, (3) associative sum.
 
 the `expression` may use any effect in `effects`:
 
@@ -76,7 +77,7 @@ LanguageF '[f,g] a
 newtype LanguageF (effects :: [* -> *]) (a :: *) = LanguageF { getLanguageF ::
  (CoRec (Apply a) effects)
  } -- deriving (Functor)
- -- TODO GADT with All Functor, for convenience
+ -- TODO SumF
 
 -- |
 instance Functor (LanguageF effects) where
@@ -193,14 +194,14 @@ fromLanguage (Language m) = (FreeT . Identity) $ fmap (fromLanguage) m
 -- | wraps 'iter'.
 iterL
  :: (LanguageF effects a -> a)
- -> (Language  effects a -> a)
+ -> (Language  effects a -> a) -- CoAlgebra
 iterL u = fromLanguage >>> iter u
 
 -- | wraps 'iterM'.
 iterLM
  :: (Monad m)
  => (LanguageF effects (m a) -> m a)
- -> (Language  effects a     -> m a)
+ -> (Language  effects a     -> m a) -- CoAlgebra
 iterLM u = fromLanguage >>> iterM u
 
 --------------------------------------------------------------------------------

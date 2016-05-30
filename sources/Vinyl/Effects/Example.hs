@@ -16,7 +16,7 @@ import GHC.IO.Handle (hGetContents)
 {- | an effect to visit the url that's currently in the clipboard.
 
 @
-openUrlFromClipboard = do
+openFromClipboard = do
   s <- 'getClipboard'
   'openUrl' s
 @
@@ -47,31 +47,84 @@ i.e. "any monad, that supports any set of effects that have at least 'ClipboardF
 you can specialize the effects:
 
 @
-openUrlFromClipboard
- :: ('MonadLanguage' m ['ClipboardF', 'OpenUrlF'])
+openFromClipboard
+ :: ('MonadLanguage' m [ClipboardF, OpenUrlF])
  => m ()
 @
 
 i.e. "any monad, that supports exactly two effects, 'ClipboardF' and 'OpenUrlF'".
 
+or the monad:
+
+@
+openFromClipboard
+  :: (ClipboardF ∈ effects, OpenUrlF ∈ effects)
+  => 'Language' effects ()
+@
+
+or both:
+
+@
+openFromClipboard
+ () =>
+ :: 'Language' [ClipboardF, OpenUrlF] ()
+@
+
 -}
-openUrlFromClipboard = do
+openFromClipboard = do
   s <- getClipboard
   openUrl s
 
--- | @= 'openUrlFromClipboard'@
-openUrlFromClipboard_effectsSpecialized
+-- | @= 'openFromClipboard'@
+openFromClipboard_nothingSpecialized :: (MonadWorkflow m effects) => m ()
+openFromClipboard_nothingSpecialized = openFromClipboard
+
+-- | @= 'openFromClipboard'@
+openFromClipboard_effectsSpecialized
  :: (MonadLanguage m [ClipboardF, OpenUrlF])
  => m ()
+openFromClipboard_effectsSpecialized = openFromClipboard
 
-openUrlFromClipboard_effectsSpecialized = openUrlFromClipboard
+-- | @= 'openFromClipboard'@
+openFromClipboard_monadSpecialized
+  :: (ClipboardF ∈ effects, OpenUrlF ∈ effects)
+  => Language effects ()
+openFromClipboard_monadSpecialized = openFromClipboard
+--old   :: ([ClipboardF, OpenUrlF] ⊆ effects)
+
+-- | @= 'openFromClipboard'@
+openFromClipboard_bothSpecialized
+ :: ()
+ => Language [ClipboardF, OpenUrlF] ()
+openFromClipboard_bothSpecialized = openFromClipboard
+
 
 --------------------------------------------------------------------------------
 
 type MonadWorkflow m effects =
    ( MonadClipboard m effects
-   , MonadOpenUrl m effects
+   , MonadOpenUrl   m effects
    )
+
+type Workflow = '[ClipboardF,OpenUrlF]
+
+{-| run an ad-hoc grouping of two effects.
+
+-}
+runWorkflow :: Language Workflow a -> IO a
+runWorkflow = interpretLanguage interpretWorkflow
+
+{- |
+
+@
+interpretWorkflow = 'appendInterpreters' 'interpreterClipboard' 'interpreterOpenUrl'
+@
+
+no new @Either@-like @data@types needed, the @type@-aliases are only for clarity.
+
+-}
+interpretWorkflow :: Interpreter IO Workflow a
+interpretWorkflow = interpreterClipboard `appendInterpreters` interpreterOpenUrl
 
 --------------------------------------------------------------------------------
 
@@ -79,6 +132,8 @@ type MonadClipboard m effects =
   ( MonadLanguage m effects
   , ClipboardF ∈ effects
   )
+
+type Clipboard = '[ClipboardF]
 
 data ClipboardF k
  = GetClipboard (String -> k)
@@ -95,17 +150,33 @@ setClipboard :: (MonadClipboard m effects) => String -> m ()
 setClipboard s = liftL $ SetClipboard s ()
   -- SetClipboard s () :: ClipboardF ()
 
+-- | (derived from the two primitves).
 reverseClipboard :: (MonadClipboard m effects) => m ()
 reverseClipboard = getClipboard >>= (reverse >>> setClipboard)
 
--- | calls 'iterLM'.
-runMonadClipboard :: Language '[ClipboardF] a -> IO a
-runMonadClipboard = iterLM go
- where
- go :: LanguageF '[ClipboardF] (IO a) -> IO a
- go = fromUnitLanguageF >>> \case
-   GetClipboard f -> sh_GetClipboard >>= f
-   SetClipboard s k -> sh_SetClipboard s >> k
+{- | calls 'interpretLanguage'.
+
+when using free monads directly, you would:
+
+@
+runClipboard = 'iterTM' handleClipboard
+@
+
+-}
+runClipboard :: Language '[ClipboardF] a -> IO a
+runClipboard = interpretLanguage interpreterClipboard
+
+-- | wraps 'handleClipboard'
+interpreterClipboard :: Interpreter IO '[ClipboardF] a
+interpreterClipboard = singletonInterpreter handleClipboard
+
+{- | glue the functor to its effects.
+
+-}
+handleClipboard :: CoAlgebra ClipboardF (IO a)
+handleClipboard = \case
+  GetClipboard f -> sh_GetClipboard >>= f
+  SetClipboard s k -> sh_SetClipboard s >> k
 
 -- | shells out (@$ pbpaste@), works only on OSX.
 sh_GetClipboard :: IO String
@@ -133,6 +204,8 @@ type MonadOpenUrl m effects =
   , OpenUrlF ∈ effects
   )
 
+type OpenUrl = '[OpenUrlF]
+
 data OpenUrlF k -- TODO name OpenFile, works for any file
  = OpenUrl String k
  deriving Functor
@@ -142,13 +215,14 @@ openUrl :: (MonadOpenUrl m effects) => String -> m ()
 openUrl s = liftL $ OpenUrl s ()
    -- OpenUrl s :: OpenUrlF ()
 
--- | calls 'iterLM'.
-runMonadOpenUrl :: Language '[OpenUrlF] a -> IO a
-runMonadOpenUrl = iterLM go
- where
- go :: LanguageF '[OpenUrlF] (IO a) -> IO a
- go = fromUnitLanguageF >>> \case
-   OpenUrl s k -> sh_OpenUrl s >> k
+-- | calls 'interpretLanguage'.
+runOpenUrl :: Language '[OpenUrlF] a -> IO a
+runOpenUrl = interpretLanguage interpreterOpenUrl
+
+-- |
+interpreterOpenUrl :: Interpreter IO '[OpenUrlF] a
+interpreterOpenUrl = singletonInterpreter $ \case
+  OpenUrl s k -> sh_OpenUrl s >> k
 
 -- | shells out (@$ open ...@), should work cross-platform. blocking.
 sh_OpenUrl :: String -> IO ()
@@ -170,10 +244,25 @@ stack build && stack exec example-vinyl-effects
 main :: IO ()
 main = do
  putStrLn ""
- -- runMonadOpenUrl $ openUrl "http://google.com"
- -- runMonadClipboard $ setClipboard "'" -- { echo '''' | pbcopy } would fail, unless propertly escaped
 
- runMonadClipboard $ reverseClipboard
- print =<< runMonadClipboard getClipboard
+ -- runOpenUrl $ openUrl "http://google.com"
+
+ -- runClipboard $ setClipboard "'" -- { echo '''' | pbcopy } would fail, unless propertly escaped
+
+ -- runClipboard $ setClipboard "http://google.com"
+ -- runWorkflow $ openFromClipboard
+ --
+ -- runClipboard $ reverseClipboard
+ -- print =<< runClipboard getClipboard
+
+ runClipboard $ do
+   setClipboard "http://google.com"   -- `setClipboard` as a `Clipboard`
+
+ s <- runWorkflow $ do
+   openFromClipboard
+   reverseClipboard                   -- `setClipboard` as a `Workflow`
+   getClipboard
+
+ print s
 
 --------------------------------------------------------------------------------
