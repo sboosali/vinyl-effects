@@ -27,7 +27,7 @@ library
                      LambdaCase EmptyCase TypeOperators PostfixOperators
                      ViewPatterns BangPatterns KindSignatures
                      NamedFieldPuns RecordWildCards TupleSections
-                     MultiWayIf DoAndIfThenElse EmptyDataDecls Arrows
+                     MultiWayIf DoAndIfThenElse EmptyDataDecls
                      MultiParamTypeClasses FlexibleContexts FlexibleInstances
                      TypeFamilies FunctionalDependencies
                      ScopedTypeVariables StandaloneDeriving
@@ -48,6 +48,9 @@ library
 
   , vinyl
   , free
+
+  , process
+  -- TODO, mv to executable
 
 
 -- $ stack build && stack exec example-vinyl-effects

@@ -8,6 +8,8 @@ module Vinyl.Effects.Example where
 import Vinyl.Effects
 
 import Control.Arrow ((>>>))
+import System.Process (CreateProcess(..), StdStream(..), createProcess, waitForProcess, proc, shell)
+import GHC.IO.Handle (hGetContents)
 
 --------------------------------------------------------------------------------
 
@@ -107,11 +109,22 @@ runMonadClipboard = iterLM go
 
 -- | shells out (@$ pbpaste@), works only on OSX.
 sh_GetClipboard :: IO String
-sh_GetClipboard = return "the clipboard contents"
+sh_GetClipboard = do
+  -- TODO readProcess
+  (_in, Just _out, _err, _process) <- createProcess  --NOTE safe
+      (proc "pbpaste" [])
+      { std_out = CreatePipe }
+  out <- hGetContents _out
+  let s = init out -- strip trailing \n  --TODO NOTE safe
+  return s
 
--- | shells out (@$ ... | pbcopy@), works only on OSX.
+-- | shells out (@$ ... | pbcopy@), works only on OSX. blocking.
 sh_SetClipboard :: String -> IO ()
-sh_SetClipboard s = print s
+sh_SetClipboard s = do
+  (_in, _out, _err, _process) <- createProcess $
+      (shell $ "echo '"++s++"' | pbcopy") -- lol. TODO escape?
+  _ <- waitForProcess _process
+  return ()
 
 --------------------------------------------------------------------------------
 
@@ -120,7 +133,7 @@ type MonadOpenUrl m effects =
   , OpenUrlF ∈ effects
   )
 
-data OpenUrlF k
+data OpenUrlF k -- TODO name OpenFile, works for any file
  = OpenUrl String k
  deriving Functor
 
@@ -137,9 +150,13 @@ runMonadOpenUrl = iterLM go
  go = fromUnitLanguageF >>> \case
    OpenUrl s k -> sh_OpenUrl s >> k
 
--- | shells out (@$ open ...@), works only on OSX.
+-- | shells out (@$ open ...@), should work cross-platform. blocking.
 sh_OpenUrl :: String -> IO ()
-sh_OpenUrl s = print s
+sh_OpenUrl s = do
+  (_in, _out, _err, _process) <- createProcess
+      (proc "open" [s])
+  _ <- waitForProcess _process
+  return ()
 
 --------------------------------------------------------------------------------
 
@@ -153,7 +170,10 @@ stack build && stack exec example-vinyl-effects
 main :: IO ()
 main = do
  putStrLn ""
- runMonadOpenUrl $ openUrl "google.com"
+ -- runMonadOpenUrl $ openUrl "http://google.com"
+ -- runMonadClipboard $ setClipboard "'" -- { echo '''' | pbcopy } would fail, unless propertly escaped
+
  runMonadClipboard $ reverseClipboard
+ print =<< runMonadClipboard getClipboard
 
 --------------------------------------------------------------------------------
