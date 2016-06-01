@@ -2,6 +2,5 @@
 import Test.DocTest
 
 main = doctest
- [ "sources/Effects.hs"
+ [ "sources/Vinyl/Effects.hs"
  ]
-
