@@ -51,11 +51,14 @@ type ACoAlgebra f a = a -> f a
 --------------------------------------------------------------------------------
 
 -- | A natural transformation.
-type ANaturalTransformation f g = forall x. f x -> g x
+type (:~>) f g = forall x. f x -> g x
+
+-- | A natural transformation.
+type ANaturalTransformation f g = (:~>) f g
 
 -- |
 newtype NaturalTransformation f g = NaturalTransformation { getNaturalTransformation ::
- ANaturalTransformation f g
+ f :~> g
  }
 
 -- | @~ 'NaturalTransformation' 'Identity'@
@@ -65,10 +68,10 @@ newtype IdNaturalTransformation f = IdNaturalTransformation { getIdNaturalTransf
 
 -- |
 newtype OpNaturalTransformation g f = OpNaturalTransformation { getOpNaturalTransformation ::
- ANaturalTransformation f g
+  f :~> g
  }
 
- -- | @~ 'OpNaturalTransformation' 'Identity'@
+-- | @~ 'OpNaturalTransformation' 'Identity'@
 newtype IdOpNaturalTransformation f = IdOpNaturalTransformation { getIdOpNaturalTransformation ::
  forall x. AnAlgebra f x
  }

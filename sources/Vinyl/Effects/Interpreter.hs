@@ -1,5 +1,6 @@
-{-# LANGUAGE ConstraintKinds, KindSignatures, DataKinds #-}
--- {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE ConstraintKinds, KindSignatures, DataKinds, RankNTypes #-}
+-- {-# LANGUAGE RoleAnnotations, GeneralizedNewtypeDeriving #-}
+-- ExistentialQuantification
 
 {-|
 
@@ -16,6 +17,7 @@ import Data.Vinyl.TypeLevel
 
 -- import Control.Monad
 -- import Control.Comonad
+-- import Data.Coerce
 
 --------------------------------------------------------------------------------
 
@@ -30,23 +32,49 @@ f (m a) -> m a
 e.g.
 
 @
-:: Interpreter IO '[f,g] ()
-= Interpreter $ H runF :& H runG :& RNil
+runFG :: Interpreter IO '[f,g]
+runFG = Interpreter $ 'HandlerM' runF :& 'HandlerM' runG :& RNil
 
 runF :: f (m a) -> m a
 
 runG :: g (m a) -> m a
 @
 
+specialization:
+
+@
+Interpreter IO [f,g]
+~
+Rec ('HandlerM' IO) [f,g]
+~
+(HandlerM IO f, HandlerM IO g)
+~
+( (forall x. f (IO x) -> IO x)
+, (forall y. g (IO y) -> IO y)
+)
+@
+
 -}
-data Interpreter m effects a = Interpreter { getInterpreter ::
- Rec (OpCoAlgebra (m a)) effects -- TODO forall a.
+data Interpreter (m :: * -> *) (effects :: [* -> *]) = Interpreter { getInterpreter ::
+ Rec (HandlerM m) effects
  }
 
--- | a co-algebra (with the two types in reverse order).
-newtype OpCoAlgebra a f = OpCoAlgebra { getOpCoAlgebra ::
- f a -> a
+--------------------------------------------------------------------------------
+
+{-|
+
+-}
+newtype HandlerM m f = HandlerM { getHandlerM ::
+ forall x. f (m x) -> m x
  }
+
+-- {-|
+--
+-- -}
+-- newtype Handler f = Handler { getHandler ::
+--  forall x. f x -> x
+--  }
+-- TODO Conflicts with co-records
 
 --old type HandlerM m a f = Handler f (m a) (m a)
 
@@ -90,7 +118,7 @@ data InterpreterF effects a = InterpreterF { getInterpreterF ::
 -}
 interpretLanguage
  :: (Monad m)
- => Interpreter m effects a
+ => Interpreter m effects
  -> Language      effects a
  -> m a
 interpretLanguage interpreter = iterLM (interpretLanguage_ interpreter)
@@ -100,7 +128,7 @@ interpretLanguage interpreter = iterLM (interpretLanguage_ interpreter)
 -- -}
 -- interpretLanguage
 --  :: ()
---  =>  Interpreter m effects a
+--  =>  Interpreter m effects
 --  -> (Language      effects a -> m a)
 -- interpretLanguage (Interpreter handlers) (Language features) = m
 --  where
@@ -112,12 +140,12 @@ generalizes 'match'.
 
 -}
 interpretLanguage_
- :: Interpreter m effects a
- -> CoAlgebra (LanguageF effects) (m a)
+ :: Interpreter m effects
+ -> AnAlgebra (LanguageF effects) (m a)
 interpretLanguage_ (Interpreter handlers) (LanguageF (Col variant))
  = h (getApply variant)
  where
- OpCoAlgebra h = rget variant handlers
+ HandlerM h = rget variant handlers
  -- pattern matching on `Col` refines the type,
  -- which we index into the handler array,
  -- (@Apply a f@ unifies with @proxy f@),
@@ -147,26 +175,41 @@ singletonInterpreter $ \case
 
 -}
 singletonInterpreter
- :: CoAlgebra f (m a)
- -> Interpreter m '[f] a
+ :: (forall x. AnAlgebra f (m x))
+ -> Interpreter m '[f]
 singletonInterpreter h = Interpreter hs
  where
- hs = OpCoAlgebra h :& RNil
+ hs = HandlerM h :& RNil
 
 {- | compose two interpreters. ordered.
 
 TODO unwrap all rec ops
 
 -}
-appendInterpreters :: Interpreter m fs a -> Interpreter m gs a -> Interpreter m (fs ++ gs) a
+appendInterpreters :: Interpreter m fs -> Interpreter m gs -> Interpreter m (fs ++ gs)
 appendInterpreters (Interpreter fs) (Interpreter gs)
   = Interpreter $ fs <+> gs
+
+{-err
+appendInterpreters = coerce (<+>)
+
+Couldn't match representation of type ‘Rec f0 (as0 ++ bs0)’
+                         with that of ‘Interpreter m (fs ++ gs) a’
+arising from trying to show that the representations of
+  ‘Rec f0 as0 -> Rec f0 bs0 -> Rec f0 (as0 ++ bs0)’ and
+  ‘Interpreter m fs a
+   -> Interpreter m gs a -> Interpreter m (fs ++ gs) a’ are the same
+Relevant role signatures:
+ type role Rec nominal representational nominal
+ type role ++ nominal nominal nominal
+ type role Interpreter nominal nominal nominal
+-}
 
 {-| inverts 'singletonInterpreter', for convenient access.
 
 -}
-fromSingletonInterpreter :: Interpreter m '[f] a -> CoAlgebra f (m a)
-fromSingletonInterpreter (Interpreter (OpCoAlgebra h :& RNil)) = h
+fromSingletonInterpreter :: Interpreter m '[f] -> AnAlgebra f (m a)
+fromSingletonInterpreter (Interpreter (HandlerM h :& RNil)) = h
 --TODO spurious non-exhaustive
 
 --------------------------------------------------------------------------------

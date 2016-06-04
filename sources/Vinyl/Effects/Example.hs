@@ -13,7 +13,7 @@ For each effect, we:
 * Define a handler (e.g. @('handleClipboard' :: 'ClipboardF' ('IO' a) -> 'IO' a)@),
 which involves minimal boilerplate. (if you've used the @free@ package,
 you know how it's done).
-Then, wrap that handler (a 'CoAlgebra') in an 'Interpreter',
+Then, wrap that handler (a 'AnAlgebra') in an 'Interpreter',
 for /extensibility/.
 
 You can use these effects extensibly, with an "@mtl@-style". e.g.
@@ -50,7 +50,7 @@ module Vinyl.Effects.Example
  ,reverseClipboard
  -- ** the interpreter
  ,runClipboard
- ,interpreterClipboard
+ ,interpretClipboard
  ,handleClipboard
  -- ** the implementation
  ,sh_GetClipboard
@@ -64,7 +64,8 @@ module Vinyl.Effects.Example
  ,openUrl
  -- ** the interpreter
  ,runOpenUrl
- ,interpreterOpenUrl
+ ,interpretOpenUrl
+ ,handleOpenUrl
  -- ** the implementation
  ,sh_OpenUrl
 
@@ -73,6 +74,7 @@ module Vinyl.Effects.Example
  , Workflow
  , runWorkflow
  , interpretWorkflow
+ , _interpretWorkflow
 
  -- ** e.g. openFromClipboard
  , openFromClipboard
@@ -235,21 +237,41 @@ can run any action of type:
 @('MonadWorkflow' m effects) => m a@
 
 -}
-runWorkflow :: Language Workflow a -> IO a
+runWorkflow :: Language Workflow :~> IO
 runWorkflow = interpretLanguage interpretWorkflow
 
-{- |
+{-old
+runWorkflow :: Language Workflow a -> IO a
+-}
+
+{- | definition #1:  compose interpreters by appending vinyl records.
 
 @
-interpretWorkflow = 'appendInterpreters' 'interpreterClipboard' 'interpreterOpenUrl'
+interpretWorkflow = 'appendInterpreters' 'interpretClipboard' 'interpretOpenUrl'
 @
 
 no new @Either@-like @data@types needed,
 the @type@-aliases are only for clarity.
 
 -}
-interpretWorkflow :: Interpreter IO Workflow a
-interpretWorkflow = interpreterClipboard `appendInterpreters` interpreterOpenUrl
+interpretWorkflow :: Interpreter IO Workflow
+interpretWorkflow = interpretClipboard `appendInterpreters` interpretOpenUrl
+
+{- | definition #2: Construct an interpreter directly, via handlers.
+
+@
+'Interpreter'
+  $ 'HandlerM' 'handleClipboard'
+ :& 'HandlerM' 'handleOpenUrl'
+ :& RNil
+@
+
+-}
+_interpretWorkflow :: Interpreter IO Workflow
+_interpretWorkflow = Interpreter
+  $ HandlerM handleClipboard
+ :& HandlerM handleOpenUrl
+ :& RNil
 
 --------------------------------------------------------------------------------
 
@@ -291,23 +313,23 @@ runClipboard = 'iterTM' handleClipboard
 @
 
 -}
-runClipboard :: Language '[ClipboardF] a -> IO a
-runClipboard = interpretLanguage interpreterClipboard
+runClipboard :: Language '[ClipboardF] :~> IO
+runClipboard = interpretLanguage interpretClipboard
 
--- | @interpreterClipboard = 'singletonInterpreter' 'handleClipboard'@
-interpreterClipboard :: Interpreter IO '[ClipboardF] a
-interpreterClipboard = singletonInterpreter handleClipboard
+-- | @interpretClipboard = 'singletonInterpreter' 'handleClipboard'@
+interpretClipboard :: Interpreter IO '[ClipboardF]
+interpretClipboard = singletonInterpreter handleClipboard
 
 {- | glue the functor to its effects.
 
 @
-handleClipboard = \case
-  'GetClipboard' f   -> 'sh_GetClipboard' >>= f
-  'SetClipboard' s k -> 'sh_SetClipboard' s >> k
+handleClipboard = \\case
+  'GetClipboard' f   -> 'sh_GetClipboard' '>>=' f
+  'SetClipboard' s k -> 'sh_SetClipboard' s '>>' k
 @
 
 -}
-handleClipboard :: CoAlgebra ClipboardF (IO a)
+handleClipboard :: AnAlgebra ClipboardF (IO a)
 handleClipboard = \case
   GetClipboard f -> sh_GetClipboard >>= f
   SetClipboard s k -> sh_SetClipboard s >> k
@@ -355,29 +377,40 @@ openUrl s = liftL $ OpenUrl s ()
 {- |
 
 @
-runOpenUrl = interpretLanguage interpreterOpenUrl
+runOpenUrl = interpretLanguage interpretOpenUrl
 @
 
 -}
-runOpenUrl :: Language '[OpenUrlF] a -> IO a
-runOpenUrl = interpretLanguage interpreterOpenUrl
+runOpenUrl :: Language '[OpenUrlF] :~> IO
+runOpenUrl = interpretLanguage interpretOpenUrl
 
 {- |
 
 @
-interpreterOpenUrl = 'singletonInterpreter' $ \case
+interpretOpenUrl = 'singletonInterpreter' $ \case
   'OpenUrl' s k -> 'sh_OpenUrl' s >> k
 @
 
 can extract the "co-algebra" with
 
 @
-handleOpenUrl = 'fromSingletonInterpreter' interpreterOpenUrl
+handleOpenUrl = 'fromSingletonInterpreter' interpretOpenUrl
 @
 
 -}
-interpreterOpenUrl :: Interpreter IO '[OpenUrlF] a
-interpreterOpenUrl = singletonInterpreter $ \case
+interpretOpenUrl :: Interpreter IO '[OpenUrlF]
+interpretOpenUrl = singletonInterpreter handleOpenUrl
+
+{- | glue the functor to its effects.
+
+@
+handleOpenUrl = \\case
+  'OpenUrl' s k -> 'sh_OpenUrl' s '>>' k
+@
+
+-}
+handleOpenUrl :: AnAlgebra OpenUrlF (IO a)
+handleOpenUrl = \case
   OpenUrl s k -> sh_OpenUrl s >> k
 
 -- | shells out (@$ open ...@), should work cross-platform. blocking.
