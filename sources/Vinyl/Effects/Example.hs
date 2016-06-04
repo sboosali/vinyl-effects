@@ -7,16 +7,16 @@ and then composes them ('Workflow') "on-the-fly".
 For each effect, we:
 
 * Define a functor (e.g. 'ClipboardF').
-(optionally (for convenience), aliases for the constraint
+* (optionally, for convenience, define aliases for the constraint
 (e.g. 'MonadClipboard') and effect-set (e.g. 'Clipboard')).
 * Define overloaded constructors (e.g. 'getClipboard', 'setClipboard'). TODO th.
 * Define a handler (e.g. @('handleClipboard' :: 'ClipboardF' ('IO' a) -> 'IO' a)@),
 which involves minimal boilerplate. (if you've used the @free@ package,
 you know how it's done).
-Then, wrap that handler (a 'AnAlgebra') in an 'Interpreter',
-for /extensibility/.
+Then, wrap that handler (e.g. with the shape @'ClipboardF' a -> a@)
+in an 'Interpreter', for /extensibility/.
 
-You can use these effects extensibly, with an "@mtl@-style". e.g.
+You can use these effects extensibly, "@mtl@-style". e.g.
 Since 'getClipboard' and 'openUrl' are overloaded, they can both be used in
 'openFromClipboard'.
 
@@ -51,6 +51,7 @@ module Vinyl.Effects.Example
  -- ** the interpreter
  ,runClipboard
  ,interpretClipboard
+ ,interpretClipboard2
  ,handleClipboard
  -- ** the implementation
  ,sh_GetClipboard
@@ -75,6 +76,7 @@ module Vinyl.Effects.Example
  , runWorkflow
  , interpretWorkflow1
  , interpretWorkflow2
+ ,interpretOpenUrl2
 
  -- ** e.g. openFromClipboard
  , openFromClipboard
@@ -274,6 +276,24 @@ interpretWorkflow2 = Interpreter
  :& HandlerM handleOpenUrl
  :& RNil
 
+{-| If we can handle an effect, plus some others;
+then we can handle that effect, alone.
+
+@
+'interpretOpenUrl2' = 'downcastInterpreter' 'interpretWorkflow1'
+@
+
+This casts @\'['ClipboardF','OpenUrlF']@ down to @\'['OpenUrlF']@.
+
+(For example, some library exports only a single interpreter
+that handles five effects.
+We can reconstruct an interpreter that handles only three
+of those effects with a one-liner).
+
+-}
+interpretOpenUrl2 :: Interpreter IO OpenUrl
+interpretOpenUrl2 = downcastInterpreter interpretWorkflow1
+
 --------------------------------------------------------------------------------
 
 -- | the constraint
@@ -317,9 +337,31 @@ runClipboard = 'iterTM' handleClipboard
 runClipboard :: Language '[ClipboardF] :~> IO
 runClipboard = interpretLanguage interpretClipboard
 
--- | @interpretClipboard = 'singletonInterpreter' 'handleClipboard'@
+{- | definition #1:
+"inject" a  handler into an interpreter with 'singletonInterpreter'.
+
+@
+'singletonInterpreter' 'handleClipboard'
+@
+
+-}
 interpretClipboard :: Interpreter IO '[ClipboardF]
 interpretClipboard = singletonInterpreter handleClipboard
+
+{- | definition #2:
+ constructed and interpreted directly from single handler.
+
+@
+= 'Interpreter'
+  $ 'HandlerM' 'handleClipboard'
+  ':&' 'RNil'
+@
+
+-}
+interpretClipboard2 :: Interpreter IO '[ClipboardF]
+interpretClipboard2 = Interpreter
+   $ HandlerM handleClipboard
+  :& RNil
 
 {- | glue the functor to its effects.
 

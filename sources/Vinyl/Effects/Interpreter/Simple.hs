@@ -2,6 +2,21 @@
 
 {-|
 
+Making interpreters:
+
+* 'singletonInterpreter', from a handler
+
+Growing interpreters:
+
+* 'appendInterpreters'
+
+Shrinking an interpreter:
+
+* 'downcastInterpreter', when it handles more than you need
+
+If you want to do more with them,
+just unwrap the @newtype@ and use "Data.Vinyl".
+
 -}
 module Vinyl.Effects.Interpreter.Simple where
 import Vinyl.Effects.Types
@@ -11,6 +26,7 @@ import Vinyl.Effects.Language
 import Vinyl.CoRec
 import Data.Vinyl
 import Data.Vinyl.TypeLevel
+-- import Data.Coerce
 
 --------------------------------------------------------------------------------
 
@@ -48,13 +64,13 @@ Rec ('HandlerM' IO) [f,g]
 @
 
 -}
-data Interpreter (m :: * -> *) (effects :: [* -> *]) = Interpreter { getInterpreter ::
+newtype Interpreter (m :: * -> *) (effects :: [* -> *]) = Interpreter { getInterpreter ::
  Rec (HandlerM m) effects
  }
 
 --------------------------------------------------------------------------------
 
-{-|
+{-| monadically handle a functor.
 
 -}
 newtype HandlerM m f = HandlerM { getHandlerM ::
@@ -81,40 +97,50 @@ f (m a) ->
 
 --------------------------------------------------------------------------------
 
-{-| A @product@ of "handlers".
-Generally, a (1) lifted, (2) n-ary, (3) associative product.
+{-| A (1) lifted, (2) n-ary, (3) associative product.
+
+In particular, a @product@ of "handlers".
+
+@fs@ must all be @Functor@s.
 
 e.g.
 
 @
-InterpreterF [f,g] a
+ProductF [f,g] a
 @
 
 generalizes '(,)':
 
 @
-InterpreterF '[f,g] a
+ProductF '[f,g] a
 ~
 (f a, g a)
 @
 
 -}
-data InterpreterF effects a = InterpreterF { getInterpreterF ::
- Rec (Apply a) effects
- } -- TODO ProductF
+data ProductF fs a = ProductF { getProductF ::
+ Rec (Apply a) fs
+ }
 
 --------------------------------------------------------------------------------
 
 
 {-| interpret a language into some monad.
 
+e.g.
+
+@
+interpretLanguage anInterpreter aLanguage :: m ()
+@
+
+calls 'iterLM'.
+
 -}
 interpretLanguage
  :: (Monad m)
  => Interpreter m effects
- -> Language      effects a
- -> m a
-interpretLanguage interpreter = iterLM (interpretLanguage_ interpreter)
+ -> (Language effects :~> m)
+interpretLanguage interpreter = iterLM (interpretLanguageF interpreter)
 
 -- {-|
 --
@@ -127,15 +153,16 @@ interpretLanguage interpreter = iterLM (interpretLanguage_ interpreter)
 --  where
 --  m = undefined "TODO"
 
-{-| you consume a coproduct with a product of consumers i.e. you must handle every case.
+{-| you consume a coproduct with a product of consumers
+i.e. you must handle every case.
 
-generalizes 'match'.
+like 'match'.
 
 -}
-interpretLanguage_
+interpretLanguageF
  :: Interpreter m effects
  -> AnAlgebra (LanguageF effects) (m a)
-interpretLanguage_ (Interpreter handlers) (LanguageF (Col variant))
+interpretLanguageF (Interpreter handlers) (LanguageF (Col variant))
  = h (getApply variant)
  where
  HandlerM h = rget variant handlers
@@ -145,23 +172,23 @@ interpretLanguage_ (Interpreter handlers) (LanguageF (Col variant))
  -- to access the correct handler.
 
 {-old
-interpretLanguage_ :: Rec (OpCoAlgebra a) fs -> CoRec (Apply a) fs -> a
-interpretLanguage_ handlers (Col variant) = h (getApply variant)
+interpretLanguageF :: Rec (OpCoAlgebra a) fs -> CoRec (Apply a) fs -> a
+interpretLanguageF handlers (Col variant) = h (getApply variant)
  where
  OpCoAlgebra h = rget variant handlers
 -}
 
 --------------------------------------------------------------------------------
 
-{-| make a singleton interpreter from a single handler.
+{-| make a interpreter from a single handler.
 
 e.g.
 
 @
 data ClipboardF k = GetClipboard (String -> k) | SetClipboard String k deriving Functor
 
-singletonInterpreter :: Interpreter IO '[ClipboardF] a
-singletonInterpreter $ \case
+clipboardInterpreter :: Interpreter IO '[ClipboardF] a
+clipboardInterpreter = singletonInterpreter $ \\case
  GetClipboard f   -> ... >>= f
  SetClipboard s k -> ... s >> k
 @
@@ -176,12 +203,59 @@ singletonInterpreter h = Interpreter hs
 
 {- | compose two interpreters. ordered.
 
-TODO unwrap all rec ops
-
 -}
 appendInterpreters :: Interpreter m fs -> Interpreter m gs -> Interpreter m (fs ++ gs)
-appendInterpreters (Interpreter fs) (Interpreter gs)
-  = Interpreter $ fs <+> gs
+appendInterpreters = asInterpreter2 (<+>) --TODO Can coerce?
+
+{-| Discard any number of handlers from the interpreter.
+
+-}
+downcastInterpreter :: (gs ⊆ fs) => Interpreter m fs -> Interpreter m gs
+downcastInterpreter = asInterpreter1 rcast  --TODO Can coerce?
+
+--------------------------------------------------------------------------------
+
+{-TODO unwrap all rec ops
+
+with classes?
+
+-}
+
+{- | Lift a (unary) function on records to interpreters (a newtype thereof).
+
+e.g.
+
+@
+'downcastInterpreter' = asInterpreter1 'rcast'
+@
+
+-}
+asInterpreter1
+ :: (Rec (HandlerM m) fs -> Rec (HandlerM m) gs)
+ -> (Interpreter m fs -> Interpreter m gs)
+asInterpreter1 u = \fs ->
+ Interpreter $ u (getInterpreter fs)
+
+{- | Lift an operation on records to interpreters (a newtype thereof).
+
+e.g.
+
+@
+'appendInterpreters' = asInterpreter2 ('<+>')
+@
+
+-}
+asInterpreter2
+ :: (Rec (HandlerM m) fs -> Rec (HandlerM m) gs -> Rec (HandlerM m) hs)
+ -> (Interpreter m fs -> Interpreter m gs -> Interpreter m hs)
+asInterpreter2 op = \fs gs ->
+ Interpreter $ (getInterpreter fs) `op` (getInterpreter gs)
+
+{-old
+:: (Rec (HandlerM m) fs -> Rec (HandlerM m) gs -> Rec (HandlerM m) hs) -- TODO weaker, but clearer: {forall g xs. Rec g xs})
+
+:: (forall g as bs cs. Rec g as -> Rec g bs -> Rec g cs)
+-}
 
 {-err
 appendInterpreters = coerce (<+>)
