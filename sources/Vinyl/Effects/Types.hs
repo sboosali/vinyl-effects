@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, RankNTypes #-}
 {-| shared types.
 
 -}
@@ -20,6 +20,57 @@ getApply (Apply fa) = fa
 
 --------------------------------------------------------------------------------
 
-type CoAlgebra f a = f a -> a
+newtype Algebra f a = Algebra { getAlgebra ::
+ AnAlgebra f a
+ }
+
+-- | a co-algebra (with the two types in reverse order).
+newtype OpAlgebra a f = OpAlgebra { getOpAlgebra ::
+ AnAlgebra f a
+ }
+
+-- | An algebra.
+type AnAlgebra f a = f a -> a
+-- TODO naming
+
+--------------------------------------------------------------------------------
+
+newtype CoAlgebra f a = CoAlgebra { getCoAlgebra ::
+ ACoAlgebra f a
+ }
+
+-- | a co-algebra (with the two types in reverse order).
+newtype OpCoAlgebra a f = OpCoAlgebra { getOpCoAlgebra ::
+ ACoAlgebra f a
+ }
+
+-- | A co-algebra.
+type ACoAlgebra f a = a -> f a
+-- TODO naming
+
+--------------------------------------------------------------------------------
+
+-- | A natural transformation.
+type ANaturalTransformation f g = forall x. f x -> g x
+
+-- |
+newtype NaturalTransformation f g = NaturalTransformation { getNaturalTransformation ::
+ ANaturalTransformation f g
+ }
+
+-- | @~ 'NaturalTransformation' 'Identity'@
+newtype IdNaturalTransformation f = IdNaturalTransformation { getIdNaturalTransformation ::
+ forall x. ACoAlgebra f x
+ }
+
+-- |
+newtype OpNaturalTransformation g f = OpNaturalTransformation { getOpNaturalTransformation ::
+ ANaturalTransformation f g
+ }
+
+ -- | @~ 'OpNaturalTransformation' 'Identity'@
+newtype IdOpNaturalTransformation f = IdOpNaturalTransformation { getIdOpNaturalTransformation ::
+ forall x. AnAlgebra f x
+ }
 
 --------------------------------------------------------------------------------
