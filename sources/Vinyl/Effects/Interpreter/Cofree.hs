@@ -14,4 +14,4 @@ import Data.Vinyl.TypeLevel
 import Control.Comonad.Trans.Cofree
 
 import Control.Monad
--- import Control.Comonad
+import Control.Comonad

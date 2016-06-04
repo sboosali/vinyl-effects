@@ -73,8 +73,8 @@ module Vinyl.Effects.Example
  , MonadWorkflow
  , Workflow
  , runWorkflow
- , interpretWorkflow
- , _interpretWorkflow
+ , interpretWorkflow1
+ , interpretWorkflow2
 
  -- ** e.g. openFromClipboard
  , openFromClipboard
@@ -85,6 +85,7 @@ module Vinyl.Effects.Example
 
  ) where
 import Vinyl.Effects
+import Vinyl.Effects.Interpreter.Cofree as I
 
 import Control.Arrow ((>>>))
 import System.Process (CreateProcess(..), StdStream(..), createProcess, waitForProcess, proc, shell)
@@ -229,7 +230,7 @@ type Workflow = '[ClipboardF,OpenUrlF]
 {-| run an ad-hoc grouping of two effects.
 
 @
-runWorkflow = 'interpretLanguage' interpretWorkflow
+runWorkflow = 'interpretLanguage' interpretWorkflow1
 @
 
 can run any action of type:
@@ -238,7 +239,7 @@ can run any action of type:
 
 -}
 runWorkflow :: Language Workflow :~> IO
-runWorkflow = interpretLanguage interpretWorkflow
+runWorkflow = interpretLanguage interpretWorkflow1
 
 {-old
 runWorkflow :: Language Workflow a -> IO a
@@ -254,8 +255,8 @@ no new @Either@-like @data@types needed,
 the @type@-aliases are only for clarity.
 
 -}
-interpretWorkflow :: Interpreter IO Workflow
-interpretWorkflow = interpretClipboard `appendInterpreters` interpretOpenUrl
+interpretWorkflow1 :: Interpreter IO Workflow
+interpretWorkflow1 = interpretClipboard `appendInterpreters` interpretOpenUrl
 
 {- | definition #2: Construct an interpreter directly, via handlers.
 
@@ -267,8 +268,8 @@ interpretWorkflow = interpretClipboard `appendInterpreters` interpretOpenUrl
 @
 
 -}
-_interpretWorkflow :: Interpreter IO Workflow
-_interpretWorkflow = Interpreter
+interpretWorkflow2 :: Interpreter IO Workflow
+interpretWorkflow2 = Interpreter
   $ HandlerM handleClipboard
  :& HandlerM handleOpenUrl
  :& RNil
@@ -352,6 +353,41 @@ sh_SetClipboard s = do
       (shell $ "echo '"++s++"' | pbcopy") -- lol. TODO escape?
   _ <- waitForProcess _process
   return ()
+
+--------------------------------------------------------------------------------
+
+-- | the set of handlers (one)
+type CoClipboard = '[CoClipboardF]
+
+{- | the dual functor:
+
+* the sum (@ data ... = ... | ...@) becomes
+a product (@ data ... = ... { ..., ... }@)
+* @(->)@ becomes @(,)@ and vice versa
+
+because as 'ClipboardF' "produces" values,
+so 'CoClipboardF' "consumes" them.
+
+-}
+data CoClipboardF k = CoClipboardF
+ { _getClipboard :: (String, k)  -- TODO {String} should be {m String}; unlike _setClipboard, {k ~ m ()} wont work
+ , _setClipboard :: String -> k
+ }
+ deriving Functor
+
+-- pairClipboardT :: Pairing CoClipboardT ClipboardT
+-- pairClipboardT = pairClipboardF
+
+pairClipboardF :: Pairing CoClipboardF ClipboardF
+pairClipboardF = Pairing go
+ where
+ go :: (a -> b -> r) -> (CoClipboardF a -> ClipboardF b -> r)
+ go p CoClipboardF{..} = \case
+   GetClipboard   f -> let (s,a) = _getClipboard
+                           b = f s
+                       in  p a b
+   SetClipboard s b -> let a = _setClipboard s
+                       in  p a b
 
 --------------------------------------------------------------------------------
 

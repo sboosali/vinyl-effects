@@ -50,6 +50,7 @@ library
   , vinyl-sum
 
   , free
+  , comonad
 
   , process
   -- TODO, mv to executable
