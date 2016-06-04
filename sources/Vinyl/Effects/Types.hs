@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, RankNTypes #-}
+{-# LANGUAGE GADTs, RankNTypes, ConstraintKinds #-}
 {-| shared types.
 
 -}
@@ -20,6 +20,10 @@ getApply (Apply fa) = fa
 
 --------------------------------------------------------------------------------
 
+-- | An algebra.
+type AnAlgebra f a = f a -> a
+-- TODO naming
+
 newtype Algebra f a = Algebra { getAlgebra ::
  AnAlgebra f a
  }
@@ -29,11 +33,11 @@ newtype OpAlgebra a f = OpAlgebra { getOpAlgebra ::
  AnAlgebra f a
  }
 
--- | An algebra.
-type AnAlgebra f a = f a -> a
--- TODO naming
-
 --------------------------------------------------------------------------------
+
+-- | A co-algebra.
+type ACoAlgebra f a = a -> f a
+-- TODO naming
 
 newtype CoAlgebra f a = CoAlgebra { getCoAlgebra ::
  ACoAlgebra f a
@@ -43,10 +47,6 @@ newtype CoAlgebra f a = CoAlgebra { getCoAlgebra ::
 newtype OpCoAlgebra a f = OpCoAlgebra { getOpCoAlgebra ::
  ACoAlgebra f a
  }
-
--- | A co-algebra.
-type ACoAlgebra f a = a -> f a
--- TODO naming
 
 --------------------------------------------------------------------------------
 
@@ -77,3 +77,16 @@ newtype IdOpNaturalTransformation f = IdOpNaturalTransformation { getIdOpNatural
  }
 
 --------------------------------------------------------------------------------
+
+{- | a @ConstraintKind@.
+
+('IsPairing' would be the constraints, if 'Pairing' were a class).
+
+-}
+type IsPairing f g = (Functor f, Functor g)
+
+data Pairing f g = Pairing { pair ::
+ forall a b r. (a -> b -> r) -> (f a -> g b -> r) -- Rank2
+ }
+
+ --------------------------------------------------------------------------------

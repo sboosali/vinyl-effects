@@ -100,9 +100,9 @@ InterpreterF [f,g] a
 generalizes '(,)':
 
 @
-(f a, g a)
+InterpreterF '[f,g] a
 ~
-LanguageF '[f,g] a
+(f a, g a)
 @
 
 -}

@@ -68,9 +68,9 @@ expression :: LanguageF effects
 generalizes 'Either':
 
 @
-Either (f a) (g a)
-~
 LanguageF '[f,g] a
+~
+Either (f a) (g a)
 @
 
 -}
