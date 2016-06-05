@@ -78,13 +78,16 @@ newtype IdOpNaturalTransformation f = IdOpNaturalTransformation { getIdOpNatural
 
 --------------------------------------------------------------------------------
 
-{- | a @ConstraintKind@.
+{-| a @ConstraintKind@.
 
 ('IsPairing' would be the constraints, if 'Pairing' were a class).
 
 -}
 type IsPairing f g = (Functor f, Functor g)
 
+{-|
+
+-}
 data Pairing f g = Pairing { pair ::
  forall a b r. (a -> b -> r) -> (f a -> g b -> r) -- Rank2
  }
