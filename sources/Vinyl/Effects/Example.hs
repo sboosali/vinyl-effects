@@ -1,4 +1,5 @@
-{-# LANGUAGE ConstraintKinds, NoMonomorphismRestriction, DataKinds #-}
+{-# LANGUAGE ConstraintKinds, DataKinds #-}
+{-# LANGUAGE NoMonomorphismRestriction, GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-missing-signatures #-}
 
 {-| This module defines two effects ('Clipboard' and 'OpenUrl'),
@@ -85,10 +86,47 @@ module Vinyl.Effects.Example
  , openFromClipboard_effectsSpecialized
  , openFromClipboard_bothSpecialized
 
+ -- * Reader, as an effect
+ ,MonadReader
+ ,Reader
+ ,ReaderF
+ ,ask
+
+ -- * Writer, as an effect
+ ,MonadWriter
+ ,Writer
+ ,WriterF
+ ,tell
+
+ -- * State, as an effect
+ ,MonadState
+ ,State
+ ,StateF
+ ,get
+ ,put
+
+ -- ** instance MonadLanguge RWS
+ , RWS(..)
+ , runRWS
+ , liftRWS
+ , liftReaderF
+ , liftWriterF
+ , liftStateF
+ , exampleRWS
+
  ) where
 import Vinyl.Effects
-import Vinyl.Effects.Interpreter.Cofree as I
+-- import Vinyl.Effects.Interpreter.Cofree as I
 
+-- import Data.Vinyl (rget)
+-- import Control.Monad.Trans.Class (MonadTrans(..))
+import Control.Monad.Trans.Reader (ReaderT(..))
+import Control.Monad.Trans.Writer (WriterT(..))
+import Control.Monad.Trans.State (StateT(..))
+import Data.Functor.Identity (Identity(..))
+
+import Data.Proxy (Proxy(..))
+-- import Data.Function ((&))
 import Control.Arrow ((>>>))
 import System.Process (CreateProcess(..), StdStream(..), createProcess, waitForProcess, proc, shell)
 import GHC.IO.Handle (hGetContents)
@@ -121,12 +159,19 @@ main = do
  runClipboard $ do
    setClipboard "http://google.com"   -- `setClipboard` as a `Clipboard`
 
- s <- runWorkflow $ do
-   openFromClipboard
+ contents <- runWorkflow $ do
+  --  openFromClipboard
    reverseClipboard                   -- `setClipboard` as a `Workflow`
    getClipboard
 
- print s
+ print contents
+
+ let ((a::Int), (w::[String]), (s::Int)) = runRWS False 1 $ do
+       -- _ <- exampleRWS --Err No instance for (Num t0) arising from a use of ‘exampleRWS’
+       (_::Int) <- exampleRWS --TODO Can it be inferred? Constraint trick?
+       exampleRWS
+ print (a,w,s)
+
 
 --------------------------------------------------------------------------------
 
@@ -397,39 +442,39 @@ sh_SetClipboard s = do
   return ()
 
 --------------------------------------------------------------------------------
-
--- | the set of handlers (one)
-type CoClipboard = '[CoClipboardF]
-
-{- | the dual functor:
-
-* the sum (@ data ... = ... | ...@) becomes
-a product (@ data ... = ... { ..., ... }@)
-* @(->)@ becomes @(,)@ and vice versa
-
-because as 'ClipboardF' "produces" values,
-so 'CoClipboardF' "consumes" them.
-
--}
-data CoClipboardF k = CoClipboardF
- { _getClipboard :: (String, k)  -- TODO {String} should be {m String}; unlike _setClipboard, {k ~ m ()} wont work
- , _setClipboard :: String -> k
- }
- deriving Functor
-
--- pairClipboardT :: Pairing CoClipboardT ClipboardT
--- pairClipboardT = pairClipboardF
-
-pairClipboardF :: Pairing CoClipboardF ClipboardF
-pairClipboardF = Pairing go
- where
- go :: (a -> b -> r) -> (CoClipboardF a -> ClipboardF b -> r)
- go p CoClipboardF{..} = \case
-   GetClipboard   f -> let (s,a) = _getClipboard
-                           b = f s
-                       in  p a b
-   SetClipboard s b -> let a = _setClipboard s
-                       in  p a b
+--
+-- -- | the set of handlers (one)
+-- type CoClipboard = '[CoClipboardF]
+--
+-- {- | the dual functor:
+--
+-- * the sum (@ data ... = ... | ...@) becomes
+-- a product (@ data ... = ... { ..., ... }@)
+-- * @(->)@ becomes @(,)@ and vice versa
+--
+-- because as 'ClipboardF' "produces" values,
+-- so 'CoClipboardF' "consumes" them.
+--
+-- -}
+-- data CoClipboardF k = CoClipboardF
+--  { _getClipboard :: (String, k)  -- TODO {String} should be {m String}; unlike _setClipboard, {k ~ m ()} wont work
+--  , _setClipboard :: String -> k
+--  }
+--  deriving Functor
+--
+-- -- pairClipboardT :: Pairing CoClipboardT ClipboardT
+-- -- pairClipboardT = pairClipboardF
+--
+-- pairClipboardF :: Pairing CoClipboardF ClipboardF
+-- pairClipboardF = Pairing go
+--  where
+--  go :: (a -> b -> r) -> (CoClipboardF a -> ClipboardF b -> r)
+--  go p CoClipboardF{..} = \case
+--    GetClipboard   f -> let (s,a) = _getClipboard
+--                            b = f s
+--                        in  p a b
+--    SetClipboard s b -> let a = _setClipboard s
+--                        in  p a b
 
 --------------------------------------------------------------------------------
 
@@ -498,5 +543,175 @@ sh_OpenUrl s = do
       (proc "open" [s])
   _ <- waitForProcess _process
   return ()
+
+--------------------------------------------------------------------------------
+
+-- | the constraint
+type MonadReader r m effects =
+  ( MonadLanguage m effects
+  , ReaderF r ∈ effects
+  )
+
+-- | the set of effects (one)
+type Reader r = '[ReaderF r]
+
+-- | the functor
+data ReaderF r k
+ = Ask (r -> k)
+ deriving Functor
+
+-- | @ask = 'liftL' $ 'Ask' id@
+ask :: (MonadReader r m effects) => m r
+ask = liftL $ Ask id
+
+--------------------------------------------------------------------------------
+
+-- | the constraint
+type MonadWriter w m effects =
+  ( MonadLanguage m effects
+  , WriterF w ∈ effects
+  )
+
+-- | the set of effects (one)
+type Writer w = '[WriterF w]
+
+-- | the functor
+data WriterF w k
+ = Tell w k
+ deriving Functor
+
+-- | @tell w = 'liftL' $ 'Tell' w ()@
+tell :: (MonadWriter w m effects) => w -> m ()
+tell w = liftL $ Tell w ()
+
+--------------------------------------------------------------------------------
+
+-- | the constraint
+type MonadState s m effects =
+  ( MonadLanguage m effects
+  , StateF s ∈ effects
+  )
+
+-- | the set of effects (one)
+type State s = '[StateF s]
+
+-- | the functor
+data StateF s k
+ = Get (s -> k)
+ | Put s k
+ deriving Functor
+
+-- | @get = 'liftL' $ 'Get' id@
+get :: (MonadState s m effects) => m s
+get = liftL $ Get id
+
+-- | @put s = 'liftL' $ 'Put' s ()@
+put :: (MonadState s m effects) => s -> m ()
+put s = liftL $ Put s ()
+
+--------------------------------------------------------------------------------
+
+{-|
+
+-}
+newtype RWS r w s a = RWS { getRWS ::
+ ReaderT r (WriterT w (StateT s Identity)) a
+ }
+ deriving (Functor,Applicative,Monad)
+
+-- |
+runRWS :: (Monoid w) => r -> s -> RWS r w s a -> (a,w,s)
+runRWS r s
+    = getRWS
+  >>> flip runReaderT r
+  >>> runWriterT
+  >>> flip runStateT s
+  >>> runIdentity
+  >>> (\((_a,_w),_s) -> (_a,_w,_s))
+
+{-| since 'MonadLanguage is a class,
+even though 'RWS' is a custom monad (not a 'Language'),
+you can still provide an instance.
+
+
+-}
+instance (Monoid w) => MonadLanguage (RWS r w s) [ReaderF r, WriterF w, StateF s] where
+  -- liftL :: (f ∈ effects, Functor f) => f a -> m a
+  liftL effect = getOpNaturalTransformation (rget Proxy liftRWS) effect
+
+{-old
+liftL effect = getOpNaturalTransformation (rget effect liftRWS) effect
+-}
+
+{- |
+
+-}
+liftRWS
+ :: (Monoid w)
+ => Rec (OpNaturalTransformation (RWS r w s)) [ReaderF r, WriterF w, StateF s]
+liftRWS
+   = OpNaturalTransformation liftReaderF
+  :& OpNaturalTransformation liftWriterF
+  :& OpNaturalTransformation liftStateF
+  :& RNil
+
+-- |
+liftReaderF :: (Monoid w) => ReaderF r a -> RWS r w s a
+liftReaderF = \case
+ Ask f -> RWS $ ReaderT $ \r -> do
+   return (f r)
+ -- ReaderT r m a = r -> m a
+
+-- |
+liftWriterF :: (Monoid w) => WriterF w a -> RWS r w s a
+liftWriterF = \case
+ Tell w k -> RWS $ ReaderT $ \_ -> WriterT $ do
+   return (k,w)
+ -- WriterT w m a = m (a, w)
+
+-- |
+liftStateF :: (Monoid w) => StateF s a -> RWS r w s a
+liftStateF = \case
+ Get f   -> RWS $ ReaderT $ \_ -> WriterT $ StateT $ \s -> do
+   return ((f s, mempty), s) --TODO?
+ Put s k -> RWS $ ReaderT $ \_ -> WriterT $ StateT $ \_ -> do
+   return ((k,mempty), s)
+ -- StateT s m a = s -> m (a,s)
+
+{-NOTE
+
+ReaderT r (WriterT w (StateT s Identity)) a
+~
+r -> WriterT w (StateT s Identity) a
+~
+r -> StateT s Identity (a,w)
+~
+r -> Identity ((a,w),s)
+~
+r -> ((a,w),s)
+
+-}
+
+--------------------------------------------------------------------------------
+
+-- |
+exampleRWS
+ :: ( MonadReader Bool     m effects
+    , MonadWriter [String] m effects
+    , MonadState  i        m effects
+    , Num i, Show i
+    )
+ => m i
+exampleRWS = do
+  b <- ask
+  i <- get
+
+  let f = if b then id else negate
+  let j = f i
+  let k = i + 1
+
+  tell $ [show j]
+  put k
+  return j
 
 --------------------------------------------------------------------------------

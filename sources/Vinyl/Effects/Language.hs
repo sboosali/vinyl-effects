@@ -139,8 +139,10 @@ class (Monad m) => MonadLanguage m effects | m -> effects where
    :: ( f ∈ effects
       , Functor f
       )
-   => f a  --OLD effect (m a)
+   => f a
    -> m a
+
+--OLD effect (m a)
 
 -- | The simplest concrete implementation for the interface.
 --

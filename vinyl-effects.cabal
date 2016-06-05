@@ -52,8 +52,9 @@ library
   , free
   , comonad
 
-  , process
   -- TODO, mv to executable
+  , process
+  , transformers
 
 
 -- $ stack build && stack exec example-vinyl-effects
