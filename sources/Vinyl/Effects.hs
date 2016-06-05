@@ -1,4 +1,4 @@
-{-| Extensible effects. Minimal boilerplate. Decent inference.
+{-| Extensible effects. Minimal boilerplate. (Weakened inference).
 
 See "Vinyl.Effects.Example" for a detailed tutorial.
 

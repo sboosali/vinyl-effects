@@ -113,6 +113,8 @@ module Vinyl.Effects.Example
  , liftWriterF
  , liftStateF
  , exampleRWS
+ ,exampleRWS_specializedLanguage
+ ,exampleRWS_specializedRWS
 
  ) where
 import Vinyl.Effects
@@ -166,12 +168,20 @@ main = do
 
  print contents
 
- let ((a::Int), (w::[String]), (s::Int)) = runRWS False 1 $ do
+ let ((a::Int), (w::[String]), s) = runRWS False (1::Int) $ do --TODO why (a::Int) when (1::Int) and (m i)?
        -- _ <- exampleRWS --Err No instance for (Num t0) arising from a use of ‘exampleRWS’
        (_::Int) <- exampleRWS --TODO Can it be inferred? Constraint trick?
        exampleRWS
  print (a,w,s)
 
+{-old
+
+let ((a::Int), (w::[String]), s) = runRWS False (1::Int) $ exampleRWS >> exampleRWS
+print (a,w,s)
+
+let ((a::Int), (w::[String]), (s::Int)) = runRWS False 1 $ do
+
+-}
 
 --------------------------------------------------------------------------------
 
@@ -611,7 +621,80 @@ put s = liftL $ Put s ()
 
 --------------------------------------------------------------------------------
 
-{-|
+{-| since 'MonadLanguage is a class,
+even though 'RWS' is a custom monad (not a 'Language'),
+you can still provide an instance.
+
+The instance declares that @RWS@ has three effects:
+reading an environment, logging, and state access.
+Which means that the functors ('ReaderF', 'WriterF', 'StateF')
+can be injected into our concrete/custom monad stack.
+
+Thus 'exampleRWS',
+which is built with overloaded procedures
+('ask','tell','get','put' are from this module, not the @mtl@ package),
+can be specialized to both a 'Language':
+
+@
+-- 'exampleRWS_specializedLanguage'
+exampleRWS
+ :: (Num i, Show i)
+ => Language [ReaderF Bool, WriterF [String], StateF i] i
+@
+
+and the more familiar 'RWS':
+
+@
+-- 'exampleRWS_specializedRWS'
+exampleRWS
+ :: (Num i, Show i)
+ => RWS Bool [String] i i
+@
+
+To "lift the effect", we define a record of liftings
+for **each** possible effect:
+
+@
+'liftRWS'
+   = OpNaturalTransformation 'liftReaderF'
+  :& OpNaturalTransformation 'liftWriterF'
+  :& OpNaturalTransformation 'liftStateF'
+  :& RNil
+
+  -- (the 'OpNaturalTransformation' is boilerplate)
+@
+
+and then perform a record lookup for **the** particular effect
+given at runtime:
+
+@
+instance ('Monoid' w) => 'MonadLanguage' (RWS r w s) ['ReaderF' r, 'WriterF' w, 'StateF' s] where
+  'liftL' effect = 'getOpNaturalTransformation' ('rget' 'Proxy' 'liftRWS') effect
+@
+
+For example, when the @effect@ is @'ask'@:
+
+@
+liftL ask
+=
+liftL ask
+=
+getOpNaturalTransformation (rget Proxy liftRWS) ask
+=
+getOpNaturalTransformation (OpNaturalTransformation liftReaderF) ask
+=
+liftReaderF ask
+=
+liftReaderF (Ask id)
+=
+RWS $ ReaderT $ \r -> do
+  return (id r)
+=
+RWS $ ReaderT $ \r -> do
+  return r
+=
+RWS $ ReaderT return
+@
 
 -}
 newtype RWS r w s a = RWS { getRWS ::
@@ -629,17 +712,14 @@ runRWS r s
   >>> runIdentity
   >>> (\((_a,_w),_s) -> (_a,_w,_s))
 
-{-| since 'MonadLanguage is a class,
-even though 'RWS' is a custom monad (not a 'Language'),
-you can still provide an instance.
-
-
+{-|
 -}
 instance (Monoid w) => MonadLanguage (RWS r w s) [ReaderF r, WriterF w, StateF s] where
   -- liftL :: (f ∈ effects, Functor f) => f a -> m a
-  liftL effect = getOpNaturalTransformation (rget Proxy liftRWS) effect
+  liftL = getOpNaturalTransformation (rget Proxy liftRWS)
 
 {-old
+liftL = getOpNaturalTransformation . rget Proxy liftRWS
 liftL effect = getOpNaturalTransformation (rget effect liftRWS) effect
 -}
 
@@ -694,7 +774,7 @@ r -> ((a,w),s)
 
 --------------------------------------------------------------------------------
 
--- |
+-- | uses all four effectful operations ('ask','tell','get','put').
 exampleRWS
  :: ( MonadReader Bool     m effects
     , MonadWriter [String] m effects
@@ -713,5 +793,39 @@ exampleRWS = do
   tell $ [show j]
   put k
   return j
+
+-- | @= 'exampleRWS'@
+exampleRWS_specializedLanguage
+ :: (Num i, Show i)
+ => Language [ReaderF Bool, WriterF [String], StateF i] i
+exampleRWS_specializedLanguage = exampleRWS
+
+-- | @= 'exampleRWS'@
+exampleRWS_specializedRWS
+ :: (Num i, Show i)
+ => RWS Bool [String] i i
+exampleRWS_specializedRWS = exampleRWS
+
+{-TODO no inference
+
+exampleRWS_twice
+ :: ( MonadReader Bool     m effects
+    , MonadWriter [String] m effects
+    , MonadState  i        m effects
+    , Num i, Show i
+    )
+ => m i
+exampleRWS_twice = do
+  _ <- exampleRWS   <====== ambiguity
+  exampleRWS
+
+  Could not deduce (Num a0) arising from a use of ‘exampleRWS’
+  from the context (MonadReader Bool m effects,
+                    MonadWriter [String] m effects,
+                    MonadState i m effects,
+                    Num i,
+                    Show i)
+
+-}
 
 --------------------------------------------------------------------------------
