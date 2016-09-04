@@ -806,6 +806,31 @@ exampleRWS_specializedRWS
  => RWS Bool [String] i i
 exampleRWS_specializedRWS = exampleRWS
 
+exampleRWS_mono
+ :: ( MonadReader Bool     m effects
+    , MonadWriter [String] m effects
+    , MonadState  Int      m effects
+    )
+ => m Int
+exampleRWS_mono = exampleRWS
+
+exampleRWS_monoTwice = do
+  exampleRWS_mono
+  exampleRWS_mono
+
+exampleRWS_typeEquality
+ :: ( MonadReader Bool     m effects
+    , MonadWriter [String] m effects
+    , MonadState  i        m effects
+    , i ~ Int
+    )
+ => m i
+exampleRWS_typeEquality = exampleRWS
+
+exampleRWS_typeEqualityTwice = do
+  exampleRWS_typeEquality
+  exampleRWS_typeEquality
+
 {-TODO no inference
 
 exampleRWS_twice
